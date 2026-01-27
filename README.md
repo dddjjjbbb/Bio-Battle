@@ -2,7 +2,7 @@
 
 Ever wondered how Michael Jordan might fare in a completely ludicrous and impossible Top Trumps game against, say, Ada Lovelace, Carl Sagan, or Boudica? For some reason, I did, and thus, Bio Battle was born.
 
-![Bio Battle Cards](docs/cards.png)
+![Bio Battle Cards](cards.png)
 
 ## What Actually Is It?
 
