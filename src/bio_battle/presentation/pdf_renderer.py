@@ -11,7 +11,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from bio_battle.config.settings import Settings
-from bio_battle.domain.entities import Card
+from bio_battle.domain.entities import Card, EntityMode
 from bio_battle.domain.nationality import get_flags_for_text
 from bio_battle.presentation.layout import (
     SheetLayout,
@@ -406,37 +406,36 @@ class PdfRenderer:
         """Draw info section with dates, stats, and description."""
         small_line = 5
         y = top_y
-        person = card.person
+        subject = card.subject
         text_color = Color(0.3, 0.3, 0.3)
+        is_person = subject.mode == EntityMode.PERSON
 
         # === STATS with bold labels ===
-        # Left column: birth/death info and card creation date
-        if person.birth_date:
-            birth_year = person.birth_date.year
+        # Left column: birth/death info (only for people)
+        if is_person and subject.birth_date:
+            birth_year = subject.birth_date.year
             y = self._draw_label_value(c, x, y, "Born:", str(birth_year), text_color)
-            if person.death_date:
-                death_year = person.death_date.year
+            if subject.death_date:
+                death_year = subject.death_date.year
                 y = self._draw_label_value(c, x, y, "Died:", str(death_year), text_color)
-
-        # Card creation date
-        today = date.today().strftime("%Y-%m-%d")
-        y = self._draw_label_value(c, x, y, "Created:", today, text_color)
 
         # Right column stats (drawn on same lines)
         right_y = top_y
-        if person.age is not None:
-            label = "Lived:" if person.death_date else "Age:"
-            self._draw_label_value_right(c, x + width, right_y, label, f"{person.age} yrs", text_color)
-        else:
-            # Unknown age
-            self._draw_label_value_right(c, x + width, right_y, "Age:", "Unknown", text_color)
-        right_y -= small_line
 
-        self._draw_label_value_right(c, x + width, right_y, "Views:", f"{_format_number(person.page_views)}/mo", text_color)
+        # Age/Lived only shown for people
+        if is_person:
+            if subject.age is not None:
+                label = "Lived:" if subject.death_date else "Age:"
+                self._draw_label_value_right(c, x + width, right_y, label, f"{subject.age} yrs", text_color)
+            else:
+                self._draw_label_value_right(c, x + width, right_y, "Age:", "Unknown", text_color)
+            right_y -= small_line
+
+        self._draw_label_value_right(c, x + width, right_y, "Views:", f"{_format_number(subject.page_views)}/mo", text_color)
         right_y -= small_line
-        self._draw_label_value_right(c, x + width, right_y, "Words:", f"{_format_number(person.article_length)}", text_color)
+        self._draw_label_value_right(c, x + width, right_y, "Words:", f"{_format_number(subject.article_length)}", text_color)
         right_y -= small_line
-        self._draw_label_value_right(c, x + width, right_y, "Wiki Langs:", str(person.languages_count), text_color)
+        self._draw_label_value_right(c, x + width, right_y, "Wiki Langs:", str(subject.languages_count), text_color)
         right_y -= small_line  # Account for last line
 
         # Move y to account for right column
@@ -458,7 +457,7 @@ class PdfRenderer:
         max_lines = int(available_height / small_line)
 
         # Sanitize bio text
-        safe_bio = _sanitize_text(person.bio)
+        safe_bio = _sanitize_text(subject.bio)
 
         # Word wrap and find sentence boundaries that fit
         lines = self._wrap_text_to_lines(c, safe_bio, width)

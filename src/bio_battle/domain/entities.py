@@ -2,11 +2,19 @@
 
 from dataclasses import dataclass
 from datetime import date
+from enum import Enum
+
+
+class EntityMode(Enum):
+    """Mode for entity type."""
+
+    PERSON = "person"
+    THING = "thing"
 
 
 @dataclass(frozen=True)
-class Person:
-    """Represents a person from Wikipedia."""
+class Subject:
+    """Represents a Wikipedia subject (person or thing)."""
 
     identifier: str
     name: str
@@ -18,6 +26,7 @@ class Person:
     page_views: int
     article_length: int
     languages_count: int
+    mode: EntityMode = EntityMode.PERSON
 
     @property
     def age(self) -> int | None:
@@ -50,6 +59,10 @@ class Person:
         return self.description
 
 
+# Backward compatibility alias
+Person = Subject
+
+
 @dataclass(frozen=True)
 class Score:
     """Represents a score for a single category."""
@@ -60,10 +73,15 @@ class Score:
 
 @dataclass(frozen=True)
 class Card:
-    """Represents a completed card with person and scores."""
+    """Represents a completed card with subject and scores."""
 
-    person: Person
+    subject: Subject
     scores: dict[str, Score]
+
+    @property
+    def person(self) -> Subject:
+        """Backward compatibility alias for subject."""
+        return self.subject
 
     @property
     def total_score(self) -> int:

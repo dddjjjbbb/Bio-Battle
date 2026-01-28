@@ -36,14 +36,14 @@ def create_test_person(
 
 def create_test_card(name: str = "Albert Einstein") -> Card:
     """Create a test card."""
-    person = create_test_person(name=name)
+    subject = create_test_person(name=name)
     scores: dict[str, Score] = {
         "age": Score(raw_value=76.0, bracket_score=7),
         "page_views": Score(raw_value=1000000.0, bracket_score=7),
         "article_length": Score(raw_value=50000.0, bracket_score=8),
         "languages": Score(raw_value=150.0, bracket_score=9),
     }
-    return Card(person=person, scores=scores)
+    return Card(subject=subject, scores=scores)
 
 
 class TestPdfRenderer:
