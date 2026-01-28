@@ -10,10 +10,10 @@ from bio_battle.config.scoring_config import get_scoring_config
 from bio_battle.config.settings import get_settings
 from bio_battle.data.cache import FileCache, MemoryCache
 from bio_battle.data.pageviews_client import PageviewsClient
-from bio_battle.data.repositories import WikipediaPersonRepository
+from bio_battle.data.repositories import WikipediaSubjectRepository
 from bio_battle.data.wikipedia_client import WikipediaClient
 from bio_battle.domain.card_factory import CardFactory
-from bio_battle.domain.entities import Card
+from bio_battle.domain.entities import Card, EntityMode
 from bio_battle.domain.errors import NotAPersonError
 from bio_battle.domain.scoring import ScoringService
 from bio_battle.presentation.image_processor import ImageProcessor
@@ -21,7 +21,10 @@ from bio_battle.presentation.layout import SheetLayout
 from bio_battle.presentation.pdf_renderer import PdfRenderer
 
 
-def create_card_factory(use_file_cache: bool = True) -> CardFactory:
+def create_card_factory(
+    use_file_cache: bool = True,
+    mode: EntityMode = EntityMode.PERSON,
+) -> CardFactory:
     """Create a CardFactory with all dependencies wired up."""
     settings = get_settings()
 
@@ -37,11 +40,12 @@ def create_card_factory(use_file_cache: bool = True) -> CardFactory:
     pageviews_client = PageviewsClient(timeout=settings.wikipedia_api_timeout)
 
     # Set up repository
-    repository = WikipediaPersonRepository(
+    repository = WikipediaSubjectRepository(
         wikipedia_client=wikipedia_client,
         pageviews_client=pageviews_client,
         cache=cache,
         cache_ttl=settings.cache_ttl_seconds,
+        mode=mode,
     )
 
     # Set up scoring
@@ -49,7 +53,7 @@ def create_card_factory(use_file_cache: bool = True) -> CardFactory:
     scoring_service = ScoringService(scoring_config)
 
     return CardFactory(
-        person_repository=repository,
+        subject_repository=repository,
         scoring_service=scoring_service,
     )
 
@@ -106,6 +110,13 @@ def cli() -> None:
     help="Output PDF file path (default: output/cards.pdf)",
 )
 @click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["person", "thing"], case_sensitive=False),
+    default="person",
+    help="Entity mode: person (default) or thing",
+)
+@click.option(
     "--no-images",
     is_flag=True,
     default=False,
@@ -120,6 +131,7 @@ def cli() -> None:
 def generate(
     input_file: Path,
     output: Path | None,
+    mode: str,
     no_images: bool,
     no_cache: bool,
 ) -> None:
@@ -128,13 +140,20 @@ def generate(
     INPUT_FILE should contain Wikipedia page titles or URLs, one per line.
     Lines starting with # are treated as comments.
 
-    Example input file:
+    Example input file (people):
         # Famous scientists
         Albert_Einstein
         https://en.wikipedia.org/wiki/Marie_Curie
         Isaac_Newton
+
+    Example input file (things):
+        # Trees
+        Oak
+        https://en.wikipedia.org/wiki/Pine
+        Sequoia_(genus)
     """
     settings = get_settings()
+    entity_mode = EntityMode(mode)
 
     # Set up output path
     if output is None:
@@ -147,10 +166,10 @@ def generate(
         click.echo("No identifiers found in input file.", err=True)
         sys.exit(1)
 
-    click.echo(f"Found {len(identifiers)} identifiers")
+    click.echo(f"Found {len(identifiers)} identifiers (mode: {mode})")
 
     # Create card factory
-    factory = create_card_factory(use_file_cache=not no_cache)
+    factory = create_card_factory(use_file_cache=not no_cache, mode=entity_mode)
 
     # Generate cards
     click.echo("Fetching data from Wikipedia...")
@@ -212,17 +231,25 @@ def generate(
 
 @cli.command()
 @click.argument("identifier")
-def info(identifier: str) -> None:
-    """Show information about a Wikipedia person.
+@click.option(
+    "--mode",
+    "-m",
+    type=click.Choice(["person", "thing"], case_sensitive=False),
+    default="person",
+    help="Entity mode: person (default) or thing",
+)
+def info(identifier: str, mode: str) -> None:
+    """Show information about a Wikipedia subject.
 
-    IDENTIFIER can be a Wikipedia page title (e.g., Albert_Einstein)
+    IDENTIFIER can be a Wikipedia page title (e.g., Albert_Einstein, Oak)
     or a full Wikipedia URL.
     """
     # Handle URLs
     if "wikipedia.org" in identifier and "/wiki/" in identifier:
         identifier = identifier.split("/wiki/")[-1].split("?")[0].split("#")[0]
 
-    factory = create_card_factory(use_file_cache=True)
+    entity_mode = EntityMode(mode)
+    factory = create_card_factory(use_file_cache=True, mode=entity_mode)
     result = factory.create_card(identifier)
 
     if isinstance(result, Failure):
@@ -230,15 +257,16 @@ def info(identifier: str) -> None:
         sys.exit(1)
 
     card = result.unwrap()
-    person = card.person
+    subject = card.subject
 
-    click.echo(f"\nName: {person.name}")
-    click.echo(f"Description: {person.description}")
+    click.echo(f"\nName: {subject.name}")
+    click.echo(f"Description: {subject.description}")
+    click.echo(f"Mode: {subject.mode.value}")
 
-    if person.birth_date:
-        birth = person.birth_date.strftime("%Y-%m-%d")
-        if person.death_date:
-            death = person.death_date.strftime("%Y-%m-%d")
+    if subject.birth_date:
+        birth = subject.birth_date.strftime("%Y-%m-%d")
+        if subject.death_date:
+            death = subject.death_date.strftime("%Y-%m-%d")
             click.echo(f"Dates: {birth} - {death}")
         else:
             click.echo(f"Born: {birth}")

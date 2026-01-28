@@ -11,28 +11,32 @@ from returns.result import Failure, Result, Success
 from bio_battle.data.cache import Cache
 from bio_battle.data.pageviews_client import PageviewsClient
 from bio_battle.data.wikipedia_client import WikipediaClient
-from bio_battle.domain.entities import Person
+from bio_battle.domain.entities import EntityMode, Subject
 from bio_battle.domain.errors import FetchError, NotAPersonError
 
 
-class PersonRepository(ABC):
-    """Abstract base class for person repositories."""
+class SubjectRepository(ABC):
+    """Abstract base class for subject repositories."""
 
     @abstractmethod
-    def get_by_identifier(self, identifier: str) -> Result[Person, FetchError]:
-        """Fetch a person by their identifier.
+    def get_by_identifier(self, identifier: str) -> Result[Subject, FetchError]:
+        """Fetch a subject by their identifier.
 
         Args:
-            identifier: The unique identifier for the person (e.g., Wikipedia page title).
+            identifier: The unique identifier for the subject (e.g., Wikipedia page title).
 
         Returns:
-            Result containing Person or FetchError.
+            Result containing Subject or FetchError.
         """
         pass
 
 
-class WikipediaPersonRepository(PersonRepository):
-    """Repository for fetching person data from Wikipedia."""
+# Backward compatibility alias
+PersonRepository = SubjectRepository
+
+
+class WikipediaSubjectRepository(SubjectRepository):
+    """Repository for fetching subject data from Wikipedia."""
 
     def __init__(
         self,
@@ -40,6 +44,7 @@ class WikipediaPersonRepository(PersonRepository):
         pageviews_client: PageviewsClient,
         cache: Cache,
         cache_ttl: int = 86400,
+        mode: EntityMode = EntityMode.PERSON,
     ) -> None:
         """Initialise the repository with dependencies.
 
@@ -48,26 +53,28 @@ class WikipediaPersonRepository(PersonRepository):
             pageviews_client: Client for pageviews API calls.
             cache: Cache for storing fetched data.
             cache_ttl: Cache TTL in seconds (default 24 hours).
+            mode: Entity mode (person or thing).
         """
         self._wikipedia_client = wikipedia_client
         self._pageviews_client = pageviews_client
         self._cache = cache
         self._cache_ttl = cache_ttl
+        self._mode = mode
 
-    def get_by_identifier(self, identifier: str) -> Result[Person, FetchError]:
-        """Fetch a person from Wikipedia by their page title.
+    def get_by_identifier(self, identifier: str) -> Result[Subject, FetchError]:
+        """Fetch a subject from Wikipedia by their page title.
 
         Args:
             identifier: Wikipedia page title (e.g., "Albert_Einstein").
 
         Returns:
-            Result containing Person or FetchError.
+            Result containing Subject or FetchError.
         """
         # Check cache first
-        cache_key = f"person:{identifier}"
+        cache_key = f"{self._mode.value}:{identifier}"
         cached_data = self._cache.get(cache_key)
         if cached_data is not None:
-            return Success(self._dict_to_person(cached_data))
+            return Success(self._dict_to_subject(cached_data))
 
         # Fetch from Wikipedia API
         summary_result = self._wikipedia_client.fetch_summary(identifier)
@@ -101,23 +108,24 @@ class WikipediaPersonRepository(PersonRepository):
             article_length = self._calculate_article_length(html_content)
             birth_date, death_date = self._extract_dates(html_content)
 
-        # Check if this is actually a person
-        is_person, article_type = self._is_person(
-            description=summary.description,
-            extract=summary.extract,
-            birth_date=birth_date,
-        )
-        if not is_person:
-            return Failure(
-                NotAPersonError(
-                    message=f"'{summary.title}' is not a person ({article_type})",
-                    identifier=identifier,
-                    article_type=article_type,
-                )
+        # Check if this is actually a person (only in person mode)
+        if self._mode == EntityMode.PERSON:
+            is_person, article_type = self._is_person(
+                description=summary.description,
+                extract=summary.extract,
+                birth_date=birth_date,
             )
+            if not is_person:
+                return Failure(
+                    NotAPersonError(
+                        message=f"'{summary.title}' is not a person ({article_type})",
+                        identifier=identifier,
+                        article_type=article_type,
+                    )
+                )
 
-        # Create Person entity
-        person = Person(
+        # Create Subject entity
+        subject = Subject(
             identifier=identifier,
             name=summary.title,
             description=summary.description,
@@ -128,12 +136,13 @@ class WikipediaPersonRepository(PersonRepository):
             page_views=page_views,
             article_length=article_length,
             languages_count=languages_count,
+            mode=self._mode,
         )
 
         # Cache the result
-        self._cache.set(cache_key, self._person_to_dict(person), ttl=self._cache_ttl)
+        self._cache.set(cache_key, self._subject_to_dict(subject), ttl=self._cache_ttl)
 
-        return Success(person)
+        return Success(subject)
 
     def _calculate_article_length(self, html_content: str) -> int:
         """Calculate the word count of the article."""
@@ -216,19 +225,20 @@ class WikipediaPersonRepository(PersonRepository):
 
         return None, None
 
-    def _person_to_dict(self, person: Person) -> dict[str, Any]:
-        """Convert Person entity to dictionary for caching."""
+    def _subject_to_dict(self, subject: Subject) -> dict[str, Any]:
+        """Convert Subject entity to dictionary for caching."""
         return {
-            "identifier": person.identifier,
-            "name": person.name,
-            "description": person.description,
-            "extract": person.extract,
-            "birth_date": person.birth_date.isoformat() if person.birth_date else None,
-            "death_date": person.death_date.isoformat() if person.death_date else None,
-            "image_url": person.image_url,
-            "page_views": person.page_views,
-            "article_length": person.article_length,
-            "languages_count": person.languages_count,
+            "identifier": subject.identifier,
+            "name": subject.name,
+            "description": subject.description,
+            "extract": subject.extract,
+            "birth_date": subject.birth_date.isoformat() if subject.birth_date else None,
+            "death_date": subject.death_date.isoformat() if subject.death_date else None,
+            "image_url": subject.image_url,
+            "page_views": subject.page_views,
+            "article_length": subject.article_length,
+            "languages_count": subject.languages_count,
+            "mode": subject.mode.value,
         }
 
     def _is_person(
@@ -353,8 +363,8 @@ class WikipediaPersonRepository(PersonRepository):
         # (better to include than exclude)
         return True, "person"
 
-    def _dict_to_person(self, data: dict[str, Any]) -> Person:
-        """Convert dictionary to Person entity."""
+    def _dict_to_subject(self, data: dict[str, Any]) -> Subject:
+        """Convert dictionary to Subject entity."""
         birth_date = None
         if data.get("birth_date"):
             birth_date = date.fromisoformat(data["birth_date"])
@@ -363,7 +373,10 @@ class WikipediaPersonRepository(PersonRepository):
         if data.get("death_date"):
             death_date = date.fromisoformat(data["death_date"])
 
-        return Person(
+        mode_value = data.get("mode", "person")
+        mode = EntityMode(mode_value)
+
+        return Subject(
             identifier=data["identifier"],
             name=data["name"],
             description=data["description"],
@@ -374,4 +387,9 @@ class WikipediaPersonRepository(PersonRepository):
             page_views=data.get("page_views", 0),
             article_length=data.get("article_length", 0),
             languages_count=data.get("languages_count", 1),
+            mode=mode,
         )
+
+
+# Backward compatibility alias
+WikipediaPersonRepository = WikipediaSubjectRepository

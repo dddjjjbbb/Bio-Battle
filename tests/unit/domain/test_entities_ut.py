@@ -226,8 +226,8 @@ class TestCard:
     """Tests for Card entity."""
 
     def test_should_create_card_with_person_and_scores(self) -> None:
-        """Card should be created with person and scores."""
-        person = Person(
+        """Card should be created with subject and scores."""
+        subject = Person(
             identifier="test",
             name="Test Person",
             description="Description",
@@ -246,14 +246,15 @@ class TestCard:
             "languages": Score(raw_value=50.0, bracket_score=5),
         }
 
-        card = Card(person=person, scores=scores)
+        card = Card(subject=subject, scores=scores)
 
-        assert card.person == person
+        assert card.subject == subject
+        assert card.person == subject  # backward compatibility
         assert len(card.scores) == 4
 
     def test_should_calculate_total_score(self) -> None:
         """Card should calculate total score from all categories."""
-        person = Person(
+        subject = Person(
             identifier="test",
             name="Test Person",
             description="Description",
@@ -271,13 +272,13 @@ class TestCard:
             "article_length": Score(raw_value=25000.0, bracket_score=7),
             "languages": Score(raw_value=50.0, bracket_score=5),
         }
-        card = Card(person=person, scores=scores)
+        card = Card(subject=subject, scores=scores)
 
         assert card.total_score == 24  # 7 + 5 + 7 + 5
 
     def test_should_be_immutable(self) -> None:
         """Card should be immutable."""
-        person = Person(
+        subject = Person(
             identifier="test",
             name="Test",
             description="Desc",
@@ -289,14 +290,14 @@ class TestCard:
             article_length=5000,
             languages_count=10,
         )
-        card = Card(person=person, scores={})
+        card = Card(subject=subject, scores={})
 
         with pytest.raises(AttributeError):
-            card.person = person  # type: ignore[misc]
+            card.subject = subject  # type: ignore[misc]
 
     def test_should_support_equality_comparison(self) -> None:
         """Two Card instances with same data should be equal."""
-        person = Person(
+        subject = Person(
             identifier="test",
             name="Test",
             description="Desc",
@@ -310,7 +311,7 @@ class TestCard:
         )
         scores: dict[str, Score] = {"test": Score(raw_value=10.0, bracket_score=5)}
 
-        card1 = Card(person=person, scores=scores)
-        card2 = Card(person=person, scores=scores)
+        card1 = Card(subject=subject, scores=scores)
+        card2 = Card(subject=subject, scores=scores)
 
         assert card1 == card2
