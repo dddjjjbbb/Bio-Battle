@@ -131,3 +131,40 @@ def calculate_card_positions(layout: SheetLayout, gap_mm: float = 3.0) -> list[C
             )
 
     return positions
+
+
+def calculate_mirrored_card_positions(
+    layout: SheetLayout, gap_mm: float = 3.0
+) -> list[CardPosition]:
+    """Calculate mirrored positions for card backs (double-sided printing).
+
+    Columns are reversed within each row so that when the sheet is flipped
+    horizontally for double-sided printing, each back aligns with its front.
+    Row order and y-coordinates remain unchanged.
+
+    Args:
+        layout: The sheet layout configuration.
+        gap_mm: Gap between cards in millimetres.
+
+    Returns:
+        List of CardPosition objects with reversed column order per row.
+    """
+    normal = calculate_card_positions(layout, gap_mm)
+    cols = layout.cards_per_row
+    mirrored: list[CardPosition] = []
+
+    for row_start in range(0, len(normal), cols):
+        row_positions = normal[row_start : row_start + cols]
+        reversed_xs = [p.x_pt for p in reversed(row_positions)]
+
+        for i, position in enumerate(row_positions):
+            mirrored.append(
+                CardPosition(
+                    x_pt=reversed_xs[i],
+                    y_pt=position.y_pt,
+                    width_pt=position.width_pt,
+                    height_pt=position.height_pt,
+                )
+            )
+
+    return mirrored

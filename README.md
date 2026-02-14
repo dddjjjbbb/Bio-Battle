@@ -6,33 +6,31 @@ Ever wondered how Michael Jordan might fare in a completely ludicrous and imposs
 
 ## What Actually Is It?
 
-A trading card generator that creates cards with fairly nonsensical rankings extrapolated from Wikipedia articles.
+A trading card generator that creates cards with fairly nonsensical rankings extrapolated from Wikipedia biographies.
 
 Best not to take it too seriously, although Toni Morrison besting Chairman Mao with 28 points to 19 seems absolutely correct.
-
-Now with **Thing Mode** - generate cards for trees, species, objects, and anything else Wikipedia knows about.
 
 ## What Does It Do?
 
 Point it at a list of Wikipedia page titles and it will:
 
-- Fetch data from Wikipedia for **people** or **things** (trees, species, objects, etc.)
-- Download images and apply Floyd-Steinberg dithering
-- Calculate scores across categories of dubious merit:
-  - **People (4 categories)**: Lifespan, Fame, Legacy, Reach (max 40 points)
-  - **Things (3 categories)**: Fame, Legacy, Reach (max 30 points)
+- Fetch data from Wikipedia for people
+- Download images and apply Floyd-Steinberg dithering (or keep them in **full colour**)
+- Calculate scores across four categories of dubious merit: Lifespan, Fame, Legacy, Reach (max 40 points)
 - Render print-ready PDF cards (9 per A4 sheet)
+- Generate **card backs** with QR codes linking to Wikipedia
+- Serve a **REST API** for mobile apps
 - Sort cards from highest to lowest score, because someone has to be on top
 - Cache everything always!
 
 ### Scoring Categories
 
-| Category | Description | People | Things |
-|----------|-------------|--------|--------|
-| Lifespan | How long they lived (or have lived so far) | Yes | No |
-| Fame | Monthly Wikipedia page views | Yes | Yes |
-| Legacy | Article word count | Yes | Yes |
-| Reach | Number of Wikipedia language editions | Yes | Yes |
+| Category | Description | Score |
+|----------|-------------|-------|
+| Lifespan | How long they lived (or have lived so far) | 1-10 |
+| Fame | Monthly Wikipedia page views | 1-10 |
+| Legacy | Article word count | 1-10 |
+| Reach | Number of Wikipedia language editions | 1-10 |
 
 ## Installation
 
@@ -67,50 +65,87 @@ Emma Goldman
 Generate the PDF:
 
 ```bash
-# People (default mode)
+# Generate cards
 python -m bio_battle.main generate examples/people.txt -o output/cards.pdf
 
-# Things (trees, species, objects, etc.)
-python -m bio_battle.main generate examples/trees.txt --mode thing -o output/trees.pdf
+# Full colour images instead of dithered B&W
+python -m bio_battle.main generate examples/people.txt --color
+
+# Generate card backs with QR codes linking to Wikipedia
+python -m bio_battle.main generate examples/people.txt --backs
 ```
 
 Options:
 - `--output, -o`: Output PDF path (default: `output/cards.pdf`)
-- `--mode, -m`: Entity mode - `person` (default) or `thing`
 - `--no-images`: Skip downloading images (faster, but less fun)
 - `--no-cache`: Disable caching
+- `--color`: Full colour images instead of dithered black and white
+- `--backs`: Generate a separate PDF of card backs with QR codes
 
 ### Inspect a Single Subject
 
 Curious about stats before committing to a card?
 
 ```bash
-# Person
 python -m bio_battle.main info "Zell Kravinsky"
+```
 
-# Thing
-python -m bio_battle.main info Oak --mode thing
+### REST API
+
+Serve the card generation engine as an API for mobile or web apps:
+
+```bash
+python -m bio_battle.main serve --port 8000
+```
+
+Endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| GET | `/api/cards/{identifier}` | Get card data for a single subject |
+| GET | `/api/search?q=keyword&limit=10` | Search Wikipedia for subjects |
+| POST | `/api/deck` | Generate a deck from a list of identifiers |
+
+Interactive API docs are available at `http://localhost:8000/docs` once the server is running.
+
+Example:
+
+```bash
+# Get a single card as JSON
+curl http://localhost:8000/api/cards/Albert_Einstein
+
+# Search Wikipedia
+curl "http://localhost:8000/api/search?q=scientists&limit=5"
+
+# Generate a deck
+curl -X POST http://localhost:8000/api/deck \
+  -H "Content-Type: application/json" \
+  -d '{"identifiers": ["Albert_Einstein", "Marie_Curie", "Isaac_Newton"]}'
 ```
 
 ## What's On a Card?
 
 - **Header**: Name and nationality code(s) like [DE] or [PL/FR]
-- **Portrait**: Heavily dithered black and white image (everyone looks distinguished)
+- **Portrait**: Heavily dithered black and white image (or full colour with `--color`)
 - **Score Bars**: Four categories with visual bars. Scores out of 10
-- **Vital Statistics**: Born, Died, Created date, page views, word count, language editions
+- **Vital Statistics**: Born, Died, Age, page views, word count, language editions
 - **Bio**: The opening Wikipedia paragraph, truncated at sentence boundary
 - **Total Score**: The number that settles all arguments!
 
 Cards come with dashed cut lines, so, if you're so inclined, you can print them out and battle your friends. It's a very objective game, so it's bound to go well.
 
+With `--backs`, you also get a separate PDF of card backs featuring a QR code that links to each subject's Wikipedia page, along with the project name and GitHub repo. The backs are mirrored so they align with the fronts for double-sided printing -- just print both PDFs and cut once.
+
 ## Project Structure
 
 ```
 src/bio_battle/
+    api/             # FastAPI REST API
     config/          # Settings and scoring brackets
     data/            # Wikipedia API clients and caching
     domain/          # Entities, scoring logic, card factory
-    presentation/    # PDF rendering, image processing, layout
+    presentation/    # PDF rendering, image processing, layout, QR codes
     main.py          # CLI entry point
 ```
 
@@ -159,6 +194,9 @@ Scoring brackets are defined in `src/bio_battle/config/scoring_config.py`.
 - **beautifulsoup4**: HTML parsing for date extraction
 - **pydantic**: Settings management
 - **returns**: Result type for civilised error handling
+- **qrcode**: QR code generation for card backs
+- **fastapi**: REST API framework
+- **uvicorn**: ASGI server for the API
 
 ## Licence
 

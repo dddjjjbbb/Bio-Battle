@@ -2,7 +2,7 @@
 
 
 from bio_battle.config.scoring_config import ScoringConfig
-from bio_battle.domain.entities import EntityMode, Score, Subject
+from bio_battle.domain.entities import Score, Subject
 
 
 class ScoringService:
@@ -13,24 +13,17 @@ class ScoringService:
         self._config = config
 
     def calculate_scores(self, subject: Subject) -> dict[str, Score]:
-        """Calculate scores for all categories.
+        """Calculate scores for all four categories.
 
         Returns a dictionary mapping category name to Score object containing
         both the raw value and the bracket score.
-
-        For things, age is skipped (3 categories).
-        For people, all 4 categories are included.
         """
-        scores = {
+        return {
+            "age": self._calculate_age_score(subject),
             "page_views": self._calculate_page_views_score(subject),
             "article_length": self._calculate_article_length_score(subject),
             "languages": self._calculate_languages_score(subject),
         }
-
-        if subject.mode == EntityMode.PERSON:
-            scores["age"] = self._calculate_age_score(subject)
-
-        return scores
 
     def _calculate_age_score(self, subject: Subject) -> Score:
         """Calculate score based on age.

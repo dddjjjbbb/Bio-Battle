@@ -8,6 +8,7 @@ from bio_battle.presentation.layout import (
     CardPosition,
     SheetLayout,
     calculate_card_positions,
+    calculate_mirrored_card_positions,
 )
 
 
@@ -187,3 +188,70 @@ class TestCalculateCardPositions:
         left_margin = min_x
         right_margin = layout.page_width_pt - max_x
         assert abs(left_margin - right_margin) < 1.0
+
+
+class TestCalculateMirroredCardPositions:
+    """Tests for mirrored card positions used on card backs."""
+
+    def test_should_return_same_number_of_positions(self) -> None:
+        """Mirrored positions should have the same count as normal positions."""
+        layout = SheetLayout(
+            cards_per_row=3,
+            cards_per_column=3,
+            card_layout=CardLayout(width_mm=63.5, height_mm=88.9),
+        )
+
+        normal = calculate_card_positions(layout)
+        mirrored = calculate_mirrored_card_positions(layout)
+
+        assert len(mirrored) == len(normal)
+
+    def test_should_reverse_column_order_within_each_row(self) -> None:
+        """Mirrored positions should reverse columns so backs align with fronts."""
+        layout = SheetLayout(
+            cards_per_row=3,
+            cards_per_column=2,
+            card_layout=CardLayout(width_mm=63.5, height_mm=88.9),
+        )
+
+        normal = calculate_card_positions(layout)
+        mirrored = calculate_mirrored_card_positions(layout)
+
+        # Row 0: normal[0,1,2] should map to mirrored[2,1,0] x-positions
+        assert mirrored[0].x_pt == normal[2].x_pt
+        assert mirrored[1].x_pt == normal[1].x_pt
+        assert mirrored[2].x_pt == normal[0].x_pt
+
+        # Row 1: normal[3,4,5] should map to mirrored[5,4,3] x-positions
+        assert mirrored[3].x_pt == normal[5].x_pt
+        assert mirrored[4].x_pt == normal[4].x_pt
+        assert mirrored[5].x_pt == normal[3].x_pt
+
+    def test_should_preserve_y_coordinates(self) -> None:
+        """Mirrored positions should keep the same y coordinate per row."""
+        layout = SheetLayout(
+            cards_per_row=3,
+            cards_per_column=3,
+            card_layout=CardLayout(width_mm=63.5, height_mm=88.9),
+        )
+
+        normal = calculate_card_positions(layout)
+        mirrored = calculate_mirrored_card_positions(layout)
+
+        for i in range(9):
+            assert mirrored[i].y_pt == normal[i].y_pt
+
+    def test_should_preserve_card_dimensions(self) -> None:
+        """Mirrored positions should have identical card dimensions."""
+        layout = SheetLayout(
+            cards_per_row=3,
+            cards_per_column=3,
+            card_layout=CardLayout(width_mm=63.5, height_mm=88.9),
+        )
+
+        normal = calculate_card_positions(layout)
+        mirrored = calculate_mirrored_card_positions(layout)
+
+        for i in range(9):
+            assert mirrored[i].width_pt == normal[i].width_pt
+            assert mirrored[i].height_pt == normal[i].height_pt

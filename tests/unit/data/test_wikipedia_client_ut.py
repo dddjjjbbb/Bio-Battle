@@ -153,3 +153,210 @@ class TestWikipediaPersonData:
 
         with pytest.raises(AttributeError):
             data.title = "New Title"  # type: ignore[misc]
+
+
+class TestWikipediaClientSearch:
+    """Tests for WikipediaClient search functionality."""
+
+    @responses.activate
+    def test_should_return_page_titles_for_keyword(self) -> None:
+        """search_pages should return a list of page titles matching a keyword."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "search": [
+                        {"title": "Oak"},
+                        {"title": "Oak tree"},
+                        {"title": "White oak"},
+                    ]
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.search_pages("oak trees")
+
+        assert isinstance(result, Success)
+        titles = result.unwrap()
+        assert len(titles) == 3
+        assert "Oak" in titles
+
+    @responses.activate
+    def test_should_respect_limit_parameter(self) -> None:
+        """search_pages should pass limit to the API."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "search": [
+                        {"title": "Oak"},
+                        {"title": "Pine"},
+                    ]
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.search_pages("trees", limit=2)
+
+        assert isinstance(result, Success)
+        titles = result.unwrap()
+        assert len(titles) == 2
+
+    @responses.activate
+    def test_should_return_failure_for_api_error(self) -> None:
+        """search_pages should return Failure on API error."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={"error": "Server error"},
+            status=500,
+        )
+        client = WikipediaClient()
+
+        result = client.search_pages("trees")
+
+        assert isinstance(result, Failure)
+
+    @responses.activate
+    def test_should_return_empty_list_for_no_results(self) -> None:
+        """search_pages should return empty list when no results found."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={"query": {"search": []}},
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.search_pages("xyznonexistent")
+
+        assert isinstance(result, Success)
+        assert result.unwrap() == []
+
+
+class TestWikipediaClientDescriptions:
+    """Tests for fetching article descriptions to determine article type."""
+
+    @responses.activate
+    def test_should_return_descriptions_for_titles(self) -> None:
+        """fetch_descriptions should return a dict of title -> description."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "pages": {
+                        "1": {"title": "Rose", "description": "Genus of plants"},
+                        "2": {"title": "Flowers for Algernon", "description": "1966 novel by Daniel Keyes"},
+                        "3": {"title": "Brandon Flowers", "description": "American rock musician"},
+                    }
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.fetch_descriptions(["Rose", "Flowers for Algernon", "Brandon Flowers"])
+
+        assert isinstance(result, Success)
+        descriptions = result.unwrap()
+        assert descriptions["Rose"] == "Genus of plants"
+        assert descriptions["Flowers for Algernon"] == "1966 novel by Daniel Keyes"
+        assert descriptions["Brandon Flowers"] == "American rock musician"
+
+    @responses.activate
+    def test_should_handle_missing_descriptions(self) -> None:
+        """fetch_descriptions should return empty string for pages without descriptions."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "pages": {
+                        "1": {"title": "SomeObscureThing"},
+                    }
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.fetch_descriptions(["SomeObscureThing"])
+
+        assert isinstance(result, Success)
+        descriptions = result.unwrap()
+        assert descriptions["SomeObscureThing"] == ""
+
+    @responses.activate
+    def test_should_return_failure_on_api_error(self) -> None:
+        """fetch_descriptions should return Failure on API error."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={"error": "Server error"},
+            status=500,
+        )
+        client = WikipediaClient()
+
+        result = client.fetch_descriptions(["Rose"])
+
+        assert isinstance(result, Failure)
+
+
+class TestWikipediaClientPageImages:
+    """Tests for checking which pages have images."""
+
+    @responses.activate
+    def test_should_return_titles_with_images(self) -> None:
+        """fetch_titles_with_images should return set of titles that have thumbnails."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "pages": {
+                        "1": {"title": "Rose", "thumbnail": {"source": "https://example.com/rose.jpg"}},
+                        "2": {"title": "Obscure Plant"},
+                        "3": {"title": "Oak", "thumbnail": {"source": "https://example.com/oak.jpg"}},
+                    }
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.fetch_titles_with_images(["Rose", "Obscure Plant", "Oak"])
+
+        assert isinstance(result, Success)
+        titles_with_images = result.unwrap()
+        assert "Rose" in titles_with_images
+        assert "Oak" in titles_with_images
+        assert "Obscure Plant" not in titles_with_images
+
+    @responses.activate
+    def test_should_return_empty_set_when_none_have_images(self) -> None:
+        """fetch_titles_with_images should return empty set when no pages have images."""
+        responses.add(
+            responses.GET,
+            "https://en.wikipedia.org/w/api.php",
+            json={
+                "query": {
+                    "pages": {
+                        "1": {"title": "No Image Page"},
+                    }
+                }
+            },
+            status=200,
+        )
+        client = WikipediaClient()
+
+        result = client.fetch_titles_with_images(["No Image Page"])
+
+        assert isinstance(result, Success)
+        assert result.unwrap() == set()

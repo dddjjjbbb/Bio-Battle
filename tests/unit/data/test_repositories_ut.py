@@ -198,3 +198,4 @@ class TestWikipediaPersonRepository:
         person1 = result1.unwrap()
         person2 = result2.unwrap()
         assert person1.name == person2.name
+

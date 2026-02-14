@@ -160,3 +160,14 @@ class TestScoringService:
         assert scores["page_views"].bracket_score == 1
         assert scores["article_length"].bracket_score == 1
         assert scores["languages"].bracket_score == 1
+
+    def test_should_always_include_age_category(self) -> None:
+        """calculate_scores should always include age for all subjects."""
+        config = get_scoring_config()
+        service = ScoringService(config)
+        person = create_test_person()
+
+        scores = service.calculate_scores(person)
+
+        assert "age" in scores
+        assert len(scores) == 4

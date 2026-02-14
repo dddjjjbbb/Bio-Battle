@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from bio_battle.domain.entities import Card, Person, Score
+from bio_battle.domain.entities import Card, EntityMode, Person, Score
 
 
 class TestPerson:
@@ -202,6 +202,22 @@ class TestPerson:
         )
 
         assert person.bio == person.description
+
+
+class TestEntityMode:
+    """Tests for EntityMode enum."""
+
+    def test_should_have_person_mode(self) -> None:
+        """EntityMode should include a PERSON value."""
+        mode = EntityMode.PERSON
+
+        assert mode.value == "person"
+
+    def test_should_create_person_mode_from_string(self) -> None:
+        """EntityMode should be created from 'person' string."""
+        mode = EntityMode("person")
+
+        assert mode == EntityMode.PERSON
 
 
 class TestScore:

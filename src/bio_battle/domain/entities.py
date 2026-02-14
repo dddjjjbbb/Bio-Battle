@@ -9,12 +9,11 @@ class EntityMode(Enum):
     """Mode for entity type."""
 
     PERSON = "person"
-    THING = "thing"
 
 
 @dataclass(frozen=True)
 class Subject:
-    """Represents a Wikipedia subject (person or thing)."""
+    """Represents a Wikipedia biography subject."""
 
     identifier: str
     name: str

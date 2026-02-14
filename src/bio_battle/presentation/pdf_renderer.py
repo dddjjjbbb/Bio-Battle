@@ -11,12 +11,14 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from bio_battle.config.settings import Settings
-from bio_battle.domain.entities import Card, EntityMode
+from bio_battle.domain.entities import Card
 from bio_battle.domain.nationality import get_flags_for_text
 from bio_battle.presentation.layout import (
     SheetLayout,
     calculate_card_positions,
+    calculate_mirrored_card_positions,
 )
+from bio_battle.presentation.qr_code import generate_qr_code
 
 
 def _sanitize_text(text: str) -> str:
@@ -252,6 +254,98 @@ class PdfRenderer:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_bytes(pdf_bytes)
 
+    def render_card_backs(self, cards: list[Card]) -> bytes:
+        """Render card backs with QR codes linking to Wikipedia pages.
+
+        Each back contains the project name, GitHub repo, and a QR code.
+        Columns are mirrored so backs align with fronts for double-sided printing.
+
+        Args:
+            cards: List of cards to render backs for.
+
+        Returns:
+            PDF file content as bytes.
+        """
+        buffer = BytesIO()
+        c = canvas.Canvas(
+            buffer,
+            pagesize=(self._layout.page_width_pt, self._layout.page_height_pt),
+        )
+
+        if not cards:
+            c.save()
+            return buffer.getvalue()
+
+        positions = calculate_mirrored_card_positions(self._layout)
+        cards_per_sheet = self._layout.cards_per_sheet
+
+        for i, card in enumerate(cards):
+            if i > 0 and i % cards_per_sheet == 0:
+                c.showPage()
+
+            position_index = i % cards_per_sheet
+            position = positions[position_index]
+            self._render_card_back(c, card, position)
+
+        c.save()
+        return buffer.getvalue()
+
+    def _render_card_back(self, c: canvas.Canvas, card: Card, position) -> None:  # type: ignore[no-untyped-def]
+        """Render a single card back at the given position."""
+        x = position.x_pt
+        y = position.y_pt
+        width = position.width_pt
+        height = position.height_pt
+
+        header_height = 16
+        footer_height = 14
+        header_font_size = 8
+        footer_font_size = 4
+        name_font_size = 5
+
+        # Background
+        c.setFillColor(CARD_BACKGROUND)
+        c.setStrokeColor(CARD_BORDER)
+        c.setLineWidth(1)
+        c.rect(x, y, width, height, fill=True, stroke=True)
+
+        # Header bar -- vertically centred text
+        header_y = y + height - header_height
+        c.setFillColor(HEADER_BG)
+        c.rect(x, header_y, width, header_height, fill=True, stroke=False)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", header_font_size)
+        header_text_y = header_y + (header_height - header_font_size) / 2
+        c.drawCentredString(x + width / 2, header_text_y, "BIO BATTLE")
+
+        # Footer bar -- vertically centred text
+        c.setFillColor(HEADER_BG)
+        c.rect(x, y, width, footer_height, fill=True, stroke=False)
+        c.setFillColor(white)
+        c.setFont("Courier", footer_font_size)
+        footer_text_y = y + (footer_height - footer_font_size) / 2
+        c.drawCentredString(x + width / 2, footer_text_y, "github.com/dddjjjbbb/Bio-Battle")
+
+        # Available space between header and footer
+        content_top = header_y
+        content_bottom = y + footer_height
+        content_height = content_top - content_bottom
+
+        # QR code -- centred in the available content area
+        wiki_url = f"https://en.wikipedia.org/wiki/{card.subject.identifier}"
+        qr_image = generate_qr_code(wiki_url, box_size=4)
+        name_space = name_font_size + 4  # space for subject name below QR
+        qr_size = min(width * 0.7, content_height - name_space - 12)
+        qr_x = x + (width - qr_size) / 2
+        qr_y = content_bottom + (content_height - qr_size - name_space) / 2 + name_space
+        self._draw_image(c, qr_image, qr_x, qr_y, qr_size, qr_size)
+
+        # Subject name centred below QR code
+        c.setFillColor(black)
+        c.setFont("Courier", name_font_size)
+        safe_name = _sanitize_text(card.subject.name)
+        c.drawCentredString(x + width / 2, qr_y - name_font_size - 2, safe_name)
+
     def _render_card(
         self,
         c: canvas.Canvas,
@@ -408,11 +502,10 @@ class PdfRenderer:
         y = top_y
         subject = card.subject
         text_color = Color(0.3, 0.3, 0.3)
-        is_person = subject.mode == EntityMode.PERSON
 
         # === STATS with bold labels ===
-        # Left column: birth/death info (only for people)
-        if is_person and subject.birth_date:
+        # Left column: birth/death info
+        if subject.birth_date:
             birth_year = subject.birth_date.year
             y = self._draw_label_value(c, x, y, "Born:", str(birth_year), text_color)
             if subject.death_date:
@@ -422,14 +515,12 @@ class PdfRenderer:
         # Right column stats (drawn on same lines)
         right_y = top_y
 
-        # Age/Lived only shown for people
-        if is_person:
-            if subject.age is not None:
-                label = "Lived:" if subject.death_date else "Age:"
-                self._draw_label_value_right(c, x + width, right_y, label, f"{subject.age} yrs", text_color)
-            else:
-                self._draw_label_value_right(c, x + width, right_y, "Age:", "Unknown", text_color)
-            right_y -= small_line
+        if subject.age is not None:
+            label = "Lived:" if subject.death_date else "Age:"
+            self._draw_label_value_right(c, x + width, right_y, label, f"{subject.age} yrs", text_color)
+        else:
+            self._draw_label_value_right(c, x + width, right_y, "Age:", "Unknown", text_color)
+        right_y -= small_line
 
         self._draw_label_value_right(c, x + width, right_y, "Views:", f"{_format_number(subject.page_views)}/mo", text_color)
         right_y -= small_line

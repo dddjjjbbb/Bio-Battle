@@ -244,3 +244,176 @@ class WikipediaClient:
                     identifier=identifier,
                 )
             )
+
+    def fetch_descriptions(
+        self, titles: list[str]
+    ) -> Result[dict[str, str], FetchError]:
+        """Fetch short descriptions for a batch of Wikipedia page titles.
+
+        Uses the Wikipedia action API with prop=description to get
+        the Wikidata short description for each page.
+
+        Args:
+            titles: List of page titles to look up.
+
+        Returns:
+            Result containing a dict mapping title -> description string.
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "titles": "|".join(titles),
+            "prop": "description",
+            "format": "json",
+        }
+
+        try:
+            response = self._session.get(url, params=params, timeout=self._timeout)
+        except requests.RequestException as e:
+            return Failure(
+                ApiError(
+                    message=f"Description fetch failed: {e}",
+                    identifier="|".join(titles),
+                    status_code=None,
+                )
+            )
+
+        if response.status_code != 200:
+            return Failure(
+                ApiError(
+                    message=f"Description API error: {response.status_code}",
+                    identifier="|".join(titles),
+                    status_code=response.status_code,
+                )
+            )
+
+        try:
+            data = response.json()
+            pages = data.get("query", {}).get("pages", {})
+            result: dict[str, str] = {}
+
+            for page_data in pages.values():
+                title = page_data.get("title", "")
+                description = page_data.get("description", "")
+                result[title] = description
+
+            return Success(result)
+        except (ValueError, KeyError) as e:
+            return Failure(
+                ParseError(
+                    message=f"Failed to parse descriptions: {e}",
+                    identifier="|".join(titles),
+                )
+            )
+
+    def fetch_titles_with_images(
+        self, titles: list[str]
+    ) -> Result[set[str], FetchError]:
+        """Check which titles have thumbnail images on Wikipedia.
+
+        Args:
+            titles: List of page titles to check.
+
+        Returns:
+            Result containing a set of titles that have thumbnail images.
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "titles": "|".join(titles),
+            "prop": "pageimages",
+            "pithumbsize": "100",
+            "format": "json",
+        }
+
+        try:
+            response = self._session.get(url, params=params, timeout=self._timeout)
+        except requests.RequestException as e:
+            return Failure(
+                ApiError(
+                    message=f"Page images fetch failed: {e}",
+                    identifier="|".join(titles),
+                    status_code=None,
+                )
+            )
+
+        if response.status_code != 200:
+            return Failure(
+                ApiError(
+                    message=f"Page images API error: {response.status_code}",
+                    identifier="|".join(titles),
+                    status_code=response.status_code,
+                )
+            )
+
+        try:
+            data = response.json()
+            pages = data.get("query", {}).get("pages", {})
+            with_images: set[str] = set()
+
+            for page_data in pages.values():
+                title = page_data.get("title", "")
+                if "thumbnail" in page_data:
+                    with_images.add(title)
+
+            return Success(with_images)
+        except (ValueError, KeyError) as e:
+            return Failure(
+                ParseError(
+                    message=f"Failed to parse page images: {e}",
+                    identifier="|".join(titles),
+                )
+            )
+
+    def search_pages(
+        self, keyword: str, limit: int = 10
+    ) -> Result[list[str], FetchError]:
+        """Search Wikipedia for pages matching a keyword.
+
+        Args:
+            keyword: Search query string.
+            limit: Maximum number of results to return.
+
+        Returns:
+            Result containing list of page titles or FetchError.
+        """
+        url = "https://en.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": keyword,
+            "srlimit": str(limit),
+            "format": "json",
+        }
+
+        try:
+            response = self._session.get(url, params=params, timeout=self._timeout)
+        except requests.RequestException as e:
+            return Failure(
+                ApiError(
+                    message=f"Search request failed: {e}",
+                    identifier=keyword,
+                    status_code=None,
+                )
+            )
+
+        if response.status_code != 200:
+            return Failure(
+                ApiError(
+                    message=f"Search API error: {response.status_code}",
+                    identifier=keyword,
+                    status_code=response.status_code,
+                )
+            )
+
+        try:
+            data = response.json()
+            results = data.get("query", {}).get("search", [])
+            return Success([item["title"] for item in results])
+        except (ValueError, KeyError) as e:
+            return Failure(
+                ParseError(
+                    message=f"Failed to parse search response: {e}",
+                    identifier=keyword,
+                )
+            )
